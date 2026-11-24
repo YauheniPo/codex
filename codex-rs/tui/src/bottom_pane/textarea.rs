@@ -662,6 +662,13 @@ impl TextArea {
         self.last_click = None;
         if self.vim_enabled {
             if self.is_vim_normal_mode() {
+                if event.modifiers.is_empty()
+                    && matches!(event.code, KeyCode::Backspace | KeyCode::Delete)
+                    && let Some(range) = self.mouse_selection_range()
+                {
+                    self.replace_range(range, "");
+                    return;
+                }
                 self.mouse_selection = None;
             }
             self.handle_vim_input(event);
