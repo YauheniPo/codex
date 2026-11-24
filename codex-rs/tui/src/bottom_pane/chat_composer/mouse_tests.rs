@@ -21,6 +21,71 @@ fn mouse(composer: &mut ChatComposer, area: Rect, kind: MouseEventKind, column: 
 }
 
 #[test]
+fn select_all_draft_shortcuts_copy_and_delete_the_entire_draft() {
+    for (select, copy) in [
+        (
+            KeyEvent::new(KeyCode::Char('a'), KeyModifiers::SUPER),
+            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::SUPER),
+        ),
+        (
+            KeyEvent::new(KeyCode::F(1), KeyModifiers::SHIFT),
+            KeyEvent::new(KeyCode::Insert, KeyModifiers::CONTROL),
+        ),
+    ] {
+        let (mut composer, _rx) = new_test_composer();
+        let draft = "Привет\n  world 🦀";
+        composer.insert_str(draft);
+        composer.handle_key_event(select);
+        assert_eq!(
+            composer.draft.textarea.mouse_selection_range(),
+            Some(0..draft.len())
+        );
+        assert_eq!(
+            composer.copy_selection(&TuiEvent::Key(copy), |text| {
+                assert_eq!(text, draft);
+                Ok(CopyStatus::Confirmed)
+            }),
+            Some((draft.chars().count(), Ok(CopyStatus::Confirmed)))
+        );
+        assert_eq!(composer.current_text(), draft);
+
+        for key in [KeyCode::Backspace, KeyCode::Delete] {
+            composer.handle_key_event(select);
+            composer.handle_key_event(key.into());
+            assert_eq!(composer.current_text(), "");
+            composer.insert_str(draft);
+        }
+    }
+}
+
+#[test]
+fn select_all_copies_pending_paste_text_and_deletes_it_in_vim_normal_mode() {
+    let (mut composer, _rx) = new_test_composer();
+    let draft = "  Привет 🦀\n".repeat(LARGE_PASTE_CHAR_THRESHOLD);
+    composer.handle_paste(draft.clone());
+    composer.set_vim_enabled(/*enabled*/ true);
+    composer.handle_key_event(KeyCode::Esc.into());
+    let select = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::SUPER);
+    let copy_key = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::SUPER);
+    composer.handle_key_event(select);
+    assert_eq!(
+        composer.copy_selection(&TuiEvent::Key(copy_key), |text| {
+            assert_eq!(text, draft);
+            Ok(CopyStatus::Pending(7))
+        }),
+        Some((draft.chars().count(), Ok(CopyStatus::Pending(7))))
+    );
+    assert_eq!(
+        composer.finish_copy(&(7, Ok(CopyStatus::Confirmed)), /*current*/ true),
+        Some(draft.chars().count())
+    );
+    composer.handle_key_event(select);
+    composer.handle_key_event(KeyCode::Backspace.into());
+    assert!(composer.current_text().is_empty());
+    assert!(composer.draft.pending_pastes.is_empty());
+}
+
+#[test]
 fn composer_mouse_edits_flush_typing_and_reconcile_placeholders() {
     let (mut composer, _rx) = new_test_composer();
     composer.insert_str("hello");

@@ -13,6 +13,7 @@ use crate::tui::TuiEvent;
 use crossterm::event::MouseButton;
 use crossterm::event::MouseEvent;
 use crossterm::event::MouseEventKind;
+use std::borrow::Cow;
 
 /// The input that will receive clipboard text, independent of a search preview.
 #[derive(Debug, PartialEq, Eq)]
@@ -78,11 +79,16 @@ impl ChatComposer {
         self.draft.paste_burst.clear_window_after_non_char();
         let range = self.draft.textarea.mouse_selection_range()?;
         self.end_mouse_drag();
-        let text = &self.draft.textarea.text()[range];
+        let draft = self.draft.textarea.text();
+        let text = if range == (0..draft.len()) && !self.draft.pending_pastes.is_empty() {
+            Cow::Owned(self.current_text_with_pending())
+        } else {
+            Cow::Borrowed(&draft[range])
+        };
         let char_count = text.chars().count();
-        let result = copy(text);
+        let result = copy(&text);
         if let Ok(CopyStatus::Pending(id)) = result {
-            self.draft.textarea.defer_copy(id);
+            self.draft.textarea.defer_copy(id, char_count);
         }
         if result == Ok(CopyStatus::Confirmed) {
             self.draft.textarea.set_cursor(self.draft.textarea.cursor());

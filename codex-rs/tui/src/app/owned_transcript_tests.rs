@@ -1903,6 +1903,24 @@ fn row_containing(tui: &tui::Tui, text: &str) -> u16 {
 }
 
 #[tokio::test]
+async fn select_all_copies_the_draft_with_native_scrollback() -> Result<()> {
+    let mut app = crate::app::test_support::make_test_app().await;
+    let mut tui = crate::tui::test_support::make_test_tui()?;
+    tui.set_owned_screen(/*owned*/ false)?;
+    let draft = "first line\n  second line";
+    app.chat_widget.apply_external_edit(draft.into());
+    app.chat_widget
+        .handle_key_event(KeyEvent::new(KeyCode::F(1), KeyModifiers::SHIFT));
+
+    let copy = TuiEvent::Key(KeyEvent::new(KeyCode::Insert, KeyModifiers::CONTROL));
+    assert!(app.handle_composer_copy_event(&mut tui, &copy, |_, text| {
+        assert_eq!(text, draft);
+        Ok(crate::clipboard_copy::CopyStatus::Confirmed)
+    }));
+    Ok(())
+}
+
+#[tokio::test]
 async fn fullscreen_composer_mouse_copy_and_input_ownership() -> Result<()> {
     let mut app = crate::app::test_support::make_test_app().await;
     app.local_settings.tui.copy_on_select = CopyOnSelect::Never;

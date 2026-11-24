@@ -294,9 +294,10 @@
 //!
 //! Submission flushes expired characters and buffers before classifying Enter, independent of
 //! UI flush ticks. `disable_paste_burst` bypasses detection; setting it flushes and clears in-flight state.
-//! Mouse edits flush pending typing; selection and copy behavior lives in [`mouse`]. Confirmed
-//! explicit copies clear the selection while preserving the draft and cursor. Footer text uses a separate
-//! read-only selection owner over its final rendered cells.
+//! Mouse edits and Cmd+A flush pending typing before selecting text. Cmd+A (or xterm F13) selects
+//! the whole draft, using the same editable selection as a mouse drag. Confirmed explicit copies
+//! clear the selection while preserving the draft and cursor. Footer text uses a separate read-only
+//! selection owner over its final rendered cells.
 //!
 //! See `codex-rs/tui/src/bottom_pane/paste_burst.rs` for the detailed state machine.
 //!
@@ -2105,6 +2106,23 @@ impl ChatComposer {
 
         if self.history_search.is_some() {
             return self.handle_history_search_key(key_event);
+        }
+
+        if !self.blocks_direct_input
+            && self.draft.textarea.vim_query().is_none()
+            && matches!(
+                (key_event.code, key_event.modifiers),
+                (KeyCode::Char('a'), KeyModifiers::SUPER) | (KeyCode::F(1), KeyModifiers::SHIFT)
+            )
+        {
+            if let Some(pasted) = self.draft.paste_burst.flush_before_modified_input() {
+                self.apply_paste(pasted);
+            }
+            self.draft.paste_burst.clear_window_after_non_char();
+            self.draft.skill_completion_space = None;
+            self.draft.textarea.select_all();
+            self.sync_popups();
+            return (InputResult::None, true);
         }
 
         if self.handle_edit_history_key(key_event) {
